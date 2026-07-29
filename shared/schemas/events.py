@@ -26,6 +26,7 @@ class SupplyOffer(BaseEvent):
     quantity: float
     price_limit: float
     seller_id: str
+    carbon_intensity_gco2: float = 0.0
 
 class TradeCandidate(BaseEvent):
     buyer_id: str
@@ -37,3 +38,20 @@ class SafetyResult(BaseEvent):
     trade_candidate: TradeCandidate
     status: str # 'approved' or 'rejected'
     reason: Optional[str] = None
+
+class SettlementEvent(BaseEvent):
+    trade_id: str
+    amount: float
+    buyer_id: str
+    seller_id: str
+    previous_hash: str
+    current_hash: str
+
+class PricingSignal(BaseEvent):
+    recommended_floor: float
+    recommended_ceiling: float
+
+class ExplanationEvent(BaseEvent):
+    trade_id: str
+    decision: str
+    explanation: str

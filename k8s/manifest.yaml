@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gridpulse
+---
+# Redis
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: gridpulse
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: gridpulse
+spec:
+  ports:
+  - port: 6379
+  selector:
+    app: redis
+---
+# Postgres
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: gridpulse
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_USER
+          value: "gridpulse"
+        - name: POSTGRES_PASSWORD
+          value: "gridpulse"
+        - name: POSTGRES_DB
+          value: "gridpulse"
+        ports:
+        - containerPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: gridpulse
+spec:
+  ports:
+  - port: 5432
+  selector:
+    app: postgres
+---
+# API Gateway
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: gridpulse
+spec:
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: gridpulse-api:latest
+        imagePullPolicy: Never
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        ports:
+        - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: gridpulse
+spec:
+  type: NodePort
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30080
+  selector:
+    app: api
+---
+# Dashboard
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: gridpulse
+spec:
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: gridpulse-dashboard:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5173
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: gridpulse
+spec:
+  type: NodePort
+  ports:
+  - port: 5173
+    targetPort: 5173
+    nodePort: 30073
+  selector:
+    app: dashboard

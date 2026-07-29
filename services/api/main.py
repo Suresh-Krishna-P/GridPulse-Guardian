@@ -5,11 +5,16 @@ import sys
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import make_asgi_app
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from shared.utils.redis_client import RedisManager
 
 app = FastAPI()
+
+# Add prometheus asgi middleware to route /metrics
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
 
 app.add_middleware(
     CORSMiddleware,

@@ -4,3 +4,9 @@ redis
 pydantic
 pydantic-settings
 requests
+psycopg2-binary
+sqlalchemy
+prometheus-client
+ollama
+pandas
+openpyxl

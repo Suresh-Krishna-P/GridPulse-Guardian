@@ -24,9 +24,12 @@ def main():
             try:
                 ingestion_event = IngestionEvent(**data)
                 
-                # Mock demand prediction based on ingestion data
+                # Use the actual base_load from the ingestion event
+                base_load = ingestion_event.grid_context.get('base_load', 500)
                 temp = ingestion_event.weather_data.get('temperature', 20)
-                quantity = 100.0 + (30 - temp) * 2  # Simple mock logic
+                
+                # Mock demand based on actual base_load
+                quantity = float(base_load) + (30 - temp) * 2
                 price_limit = random.uniform(30.0, 50.0)
                 
                 bid = DemandBid(

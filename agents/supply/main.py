@@ -24,16 +24,20 @@ def main():
             try:
                 ingestion_event = IngestionEvent(**data)
                 
-                # Mock supply prediction
+                # Use actual solar irradiance from ingestion event
                 irradiance = ingestion_event.weather_data.get('solar_irradiance', 0)
-                quantity = (irradiance / 1000) * 50  # Simple mock logic
+                # Ensure we handle missing values gracefully
+                if irradiance is None: irradiance = 0
+                
+                quantity = (float(irradiance) / 1000) * 50
                 price_limit = random.uniform(20.0, 40.0)
                 
                 offer = SupplyOffer(
                     trace_id=ingestion_event.trace_id,
                     quantity=quantity,
                     price_limit=price_limit,
-                    seller_id="seller_1"
+                    seller_id=f"solar_farm_{ingestion_event.trace_id[-4:]}",
+                    carbon_intensity_gco2=0.0 # Clean energy!
                 )
                 
                 redis_mgr.publish(stream_out, offer.model_dump())

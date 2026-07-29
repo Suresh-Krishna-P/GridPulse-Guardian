@@ -56,13 +56,27 @@ def main():
                 bid_msg_id, bid = pending_bids[trace_id]
                 offer_msg_id, offer = pending_offers[trace_id]
                 
+                # Carbon Aware Optimization
+                if offer.carbon_intensity_gco2 > 1000:
+                    print(f"Rejected trace_id {trace_id} due to high carbon intensity: {offer.carbon_intensity_gco2}")
+                    # Acknowledge but do not emit TradeCandidate
+                    redis_mgr.ack(stream_demand, group, bid_msg_id)
+                    redis_mgr.ack(stream_supply, group, offer_msg_id)
+                    matched_traces.append(trace_id)
+                    continue
+                
+                # Penalty for moderate carbon
+                carbon_penalty = 0
+                if offer.carbon_intensity_gco2 > 500:
+                    carbon_penalty = 5.0
+                
                 # Create TradeCandidate
                 candidate = TradeCandidate(
                     trace_id=trace_id,
                     buyer_id=bid.buyer_id,
                     seller_id=offer.seller_id,
                     quantity=min(bid.quantity, offer.quantity),
-                    price=(bid.price_limit + offer.price_limit) / 2
+                    price=((bid.price_limit + offer.price_limit) / 2) + carbon_penalty
                 )
                 
                 redis_mgr.publish(stream_out, candidate.model_dump())
