@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  simulator:
+    build: 
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "services/simulator/main.py"]
+    environment:
+      - REDIS_HOST=redis
+
+  ingestion:
+    build: 
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "services/ingestion/main.py"]
+    environment:
+      - REDIS_HOST=redis
+
+  demand:
+    build: 
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "agents/demand/main.py"]
+    environment:
+      - REDIS_HOST=redis
+
+  supply:
+    build: 
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "agents/supply/main.py"]
+    environment:
+      - REDIS_HOST=redis
+
+  market:
+    build: 
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "agents/market/main.py"]
+    environment:
+      - REDIS_HOST=redis
+
+  safety:
+    build: 
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "agents/safety/main.py"]
+    environment:
+      - REDIS_HOST=redis
+
+  api:
+    build: 
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["uvicorn", "services.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
