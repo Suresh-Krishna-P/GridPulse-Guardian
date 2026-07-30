@@ -27,6 +27,27 @@ def generate_explanation(result: SafetyResult):
         # Deterministic fallback
         return f"Trade was {result.status}. {result.reason if result.reason else 'Grid conditions are stable.'}"
 
+from concurrent.futures import ThreadPoolExecutor
+
+def process_trade(redis_mgr, msg_id, data, stream_in, stream_out, group):
+    try:
+        result = SafetyResult(**data)
+        explanation_text = generate_explanation(result)
+        
+        explanation = ExplanationEvent(
+            trace_id=result.trace_id,
+            trade_id=result.trace_id,
+            decision=result.status,
+            explanation=explanation_text
+        )
+        
+        redis_mgr.publish(stream_out, explanation.model_dump())
+        print(f"Published Explanation for {result.trace_id}")
+        redis_mgr.ack(stream_in, group, msg_id)
+    except Exception as e:
+        print(f"Explainability Error: {e}")
+        redis_mgr.ack(stream_in, group, msg_id)
+
 def main():
     redis_mgr = RedisManager()
     stream_in = "safety_results"
@@ -37,26 +58,12 @@ def main():
     redis_mgr.ensure_group(stream_in, group)
     print("Explainability Agent started. Waiting for safety results...")
     
+    executor = ThreadPoolExecutor(max_workers=20)
+    
     while True:
         messages = redis_mgr.consume(stream_in, group, consumer)
         for msg_id, data in messages:
-            try:
-                result = SafetyResult(**data)
-                explanation_text = generate_explanation(result)
-                
-                explanation = ExplanationEvent(
-                    trace_id=result.trace_id,
-                    trade_id=result.trace_id,
-                    decision=result.status,
-                    explanation=explanation_text
-                )
-                
-                redis_mgr.publish(stream_out, explanation.model_dump())
-                print(f"Published Explanation for {result.trace_id}")
-                redis_mgr.ack(stream_in, group, msg_id)
-            except Exception as e:
-                print(f"Explainability Error: {e}")
-                redis_mgr.ack(stream_in, group, msg_id)
+            executor.submit(process_trade, redis_mgr, msg_id, data, stream_in, stream_out, group)
 
 if __name__ == "__main__":
     main()

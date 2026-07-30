@@ -10,3 +10,5 @@ prometheus-client
 ollama
 pandas
 openpyxl
+pandapower
+networkx

@@ -28,6 +28,7 @@ class LedgerEntry(Base):
     seller_id = Column(String, nullable=False)
     previous_hash = Column(String, nullable=False)
     current_hash = Column(String, nullable=False)
+    healing_session_id = Column(String, nullable=True)
 
 def init_db():
     while True:
@@ -52,6 +53,59 @@ def main():
     
     redis_mgr.ensure_group(stream_in, group)
     print("Settlement Agent started. Waiting for safety results...")
+    
+    import threading
+    import uuid
+    
+    def process_rollbacks():
+        local_redis = RedisManager()
+        last_id = "$"
+        while True:
+            try:
+                msgs = local_redis.r.xread({"rollbacks": last_id}, count=10, block=1000)
+                if msgs:
+                    for s, msg_list in msgs:
+                        for msg_id, data in msg_list:
+                            last_id = msg_id
+                            session_id = data.get(b'session_id', data.get('session_id', b'')).decode()
+                            
+                            local_session = Session()
+                            # Find all trades for this session
+                            trades = local_session.query(LedgerEntry).filter_by(healing_session_id=session_id).all()
+                            for trade in trades:
+                                if "_REVERSAL" in trade.trade_id: continue
+                                
+                                # Reversal logic
+                                rev_trade_id = f"{trade.trade_id}_REVERSAL"
+                                # check idempotency
+                                if local_session.query(LedgerEntry).filter_by(trade_id=rev_trade_id).first():
+                                    continue
+                                    
+                                last_entry = local_session.query(LedgerEntry).order_by(LedgerEntry.id.desc()).first()
+                                prev_hash = last_entry.current_hash if last_entry else "0" * 64
+                                
+                                amount = -trade.amount
+                                data_string = f"{rev_trade_id}{amount}{trade.buyer_id}{trade.seller_id}{prev_hash}"
+                                curr_hash = hashlib.sha256(data_string.encode()).hexdigest()
+                                
+                                rev_entry = LedgerEntry(
+                                    trade_id=rev_trade_id,
+                                    amount=amount,
+                                    buyer_id=trade.buyer_id,
+                                    seller_id=trade.seller_id,
+                                    previous_hash=prev_hash,
+                                    current_hash=curr_hash,
+                                    healing_session_id=session_id
+                                )
+                                local_session.add(rev_entry)
+                                local_session.commit()
+                                print(f"Settlement: Reverted trade {trade.trade_id} with hash {curr_hash[:8]} (Rollback {session_id})")
+                            local_session.close()
+            except Exception as e:
+                print(f"Rollback thread error: {e}")
+            time.sleep(1)
+            
+    threading.Thread(target=process_rollbacks, daemon=True).start()
     
     while True:
         messages = redis_mgr.consume(stream_in, group, consumer)
@@ -84,7 +138,8 @@ def main():
                         buyer_id=trade.buyer_id,
                         seller_id=trade.seller_id,
                         previous_hash=prev_hash,
-                        current_hash=curr_hash
+                        current_hash=curr_hash,
+                        healing_session_id=trade.healing_session_id
                     )
                     
                     session.add(new_entry)

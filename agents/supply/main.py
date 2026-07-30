@@ -29,7 +29,7 @@ def main():
                 # Ensure we handle missing values gracefully
                 if irradiance is None: irradiance = 0
                 
-                quantity = (float(irradiance) / 1000) * 50
+                quantity = max(1.0, (float(irradiance) / 1000) * 50)
                 price_limit = random.uniform(20.0, 40.0)
                 
                 offer = SupplyOffer(

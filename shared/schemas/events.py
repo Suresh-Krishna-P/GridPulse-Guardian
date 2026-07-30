@@ -9,6 +9,7 @@ def generate_trace_id():
 class BaseEvent(BaseModel):
     trace_id: str = Field(default_factory=generate_trace_id)
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    healing_session_id: Optional[str] = None
 
 class TickEvent(BaseEvent):
     tick: int

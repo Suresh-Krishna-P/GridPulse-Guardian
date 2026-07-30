@@ -17,7 +17,39 @@ def main():
     
     redis_mgr.ensure_group(stream_demand, group)
     redis_mgr.ensure_group(stream_supply, group)
+    
+    # Check for active healing session
+    healing_session_id = redis_mgr.r.get("healing_state:market")
+    if healing_session_id:
+        print(f"Market Agent booting in HEALING WINDOW for session {healing_session_id}")
+        
     print("Market Agent started. Waiting for bids and offers...")
+    
+    # Background thread for heartbeats and soft-kill commands
+    import threading
+    import json
+    
+    def background_tasks():
+        last_id = "$"
+        while True:
+            # Emit heartbeat
+            redis_mgr.publish("heartbeats", {"agent": "market"})
+            
+            # Check for soft-kill command
+            try:
+                msgs = redis_mgr.r.xread({"control_commands": last_id}, count=10, block=1000)
+                if msgs:
+                    for stream, msg_list in msgs:
+                        for msg_id, data in msg_list:
+                            last_id = msg_id
+                            if data.get('agent') == 'market' and data.get('command') == 'restart':
+                                print("Received soft-kill command from supervisor. Exiting!")
+                                os._exit(1)
+            except Exception as e:
+                pass
+            time.sleep(4)
+            
+    threading.Thread(target=background_tasks, daemon=True).start()
     
     pending_bids = {}
     pending_offers = {}
@@ -76,7 +108,8 @@ def main():
                     buyer_id=bid.buyer_id,
                     seller_id=offer.seller_id,
                     quantity=min(bid.quantity, offer.quantity),
-                    price=((bid.price_limit + offer.price_limit) / 2) + carbon_penalty
+                    price=((bid.price_limit + offer.price_limit) / 2) + carbon_penalty,
+                    healing_session_id=healing_session_id
                 )
                 
                 redis_mgr.publish(stream_out, candidate.model_dump())

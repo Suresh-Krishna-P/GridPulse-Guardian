@@ -45,6 +45,7 @@ services:
       redis:
         condition: service_healthy
     command: ["python", "agents/demand/main.py"]
+    restart: always
     environment:
       - REDIS_HOST=redis
 
@@ -67,6 +68,7 @@ services:
       redis:
         condition: service_healthy
     command: ["python", "agents/market/main.py"]
+    restart: always
     environment:
       - REDIS_HOST=redis
 
@@ -203,3 +205,22 @@ services:
     command: ["python", "agents/federated/main.py"]
     environment:
       - REDIS_HOST=redis
+
+  supervisor:
+    build: 
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: ["python", "agents/supervisor/main.py"]
+    restart: always
+    environment:
+      - REDIS_HOST=redis
+      - DB_USER=gridpulse
+      - DB_PASS=gridpulse
+      - DB_HOST=postgres
+      - DB_NAME=gridpulse
+      - PYTHONUNBUFFERED=1

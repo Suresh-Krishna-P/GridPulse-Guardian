@@ -24,46 +24,38 @@ weather_cache = {"timestamp": None, "data": None}
 def fetch_live_weather_with_fallback(tick_idx: int, weather_df: pd.DataFrame):
     global weather_cache
     
-    # Check cache (5 min expiry)
+    # 1. Get base weather data (from cache or API)
     if weather_cache["timestamp"] and datetime.now() < weather_cache["timestamp"] + timedelta(minutes=5):
-        return weather_cache["data"]
-        
-    try:
-        # Example coordinates (London)
-        resp = requests.get(
-            "https://api.open-meteo.com/v1/forecast?latitude=51.5085&longitude=-0.1257&current_weather=true", 
-            timeout=5
-        )
-        resp.raise_for_status()
-        data = resp.json().get("current_weather", {})
-        
-        weather_data = {
-            "temperature": data.get("temperature", 20.0),
-            "wind_speed_ms": data.get("windspeed", 5.0)
-        }
-        
-        weather_cache["timestamp"] = datetime.now()
-        weather_cache["data"] = weather_data
-        print("Fetched live weather successfully.")
-        return weather_data
-        
-    except Exception as e:
-        print(f"Weather API failed: {e}. Falling back to dataset.")
-        
-        # Fallback to dataset using tick index (modulo row count to prevent out-of-bounds)
-        if weather_df is not None and not weather_df.empty:
-            row = weather_df.iloc[tick_idx % len(weather_df)]
+        weather_data = dict(weather_cache["data"]) # copy to avoid mutating cache
+    else:
+        try:
+            resp = requests.get(
+                "https://api.open-meteo.com/v1/forecast?latitude=51.5085&longitude=-0.1257&current_weather=true", 
+                timeout=5
+            )
+            resp.raise_for_status()
+            data = resp.json().get("current_weather", {})
             weather_data = {
-                "temperature": float(row.get("temperature_c", 20.0)),
-                "solar_irradiance": float(row.get("ghi_irradiance_wm2", 800.0)),
-                "wind_speed_ms": float(row.get("wind_speed_ms", 5.0))
+                "temperature": data.get("temperature", 20.0),
+                "wind_speed_ms": data.get("windspeed", 5.0)
             }
-        else:
-            weather_data = {"temperature": 25.0, "solar_irradiance": 800.0, "wind_speed_ms": 5.0}
-            
-        weather_cache["timestamp"] = datetime.now()
-        weather_cache["data"] = weather_data
-        return weather_data
+            weather_cache["timestamp"] = datetime.now()
+            weather_cache["data"] = dict(weather_data)
+        except Exception as e:
+            print(f"Weather API failed: {e}. Falling back to default.")
+            weather_data = {"temperature": 25.0, "wind_speed_ms": 5.0}
+            weather_cache["timestamp"] = datetime.now()
+            weather_cache["data"] = dict(weather_data)
+
+    # 2. Append tick-specific solar irradiance (NOT cached)
+    if weather_df is not None and not weather_df.empty:
+        row = weather_df.iloc[tick_idx % len(weather_df)]
+        weather_data["solar_irradiance"] = float(row.get("ghi_irradiance_wm2", 800.0))
+    else:
+        import math, time
+        weather_data["solar_irradiance"] = max(0.0, math.sin(time.time() / 3600) * 1000)
+        
+    return weather_data
 
 def load_datasets():
     weather_df = pd.DataFrame()
